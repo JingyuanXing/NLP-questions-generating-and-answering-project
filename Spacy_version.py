@@ -129,11 +129,132 @@ a = NLPparagraph(current_para)
 print(a.sent_relation_extraction())
 
 
+###you can ignore everything below
+
+cur_sent = nlp(sentences[3])
+for token in cur_sent:
+    print(token.text,token.pos_, token.tag_, token.dep_, 
+          token.head.text, token.head.pos_)
+
+spacy.displacy.serve(cur_sent, style = "dep")
+
+from spacy.symbols import nsubj, VERB, AUX, NOUN, attr, dobj, agent, amod, prep, advmod, auxpass
+
+relationships = []
+verbs = [token for token in cur_sent if token.pos == VERB or token.pos == AUX]
+
+for verb in verbs:
+    subject_list = []
+    object_list = []
+    vp_list = generate_verb_phrase(verb)
+    if verb.head == verb or verb.dep == amod:
+        continue
+    else:
+        subject_list = generate_subject_phrase(verb, vp_list, relationships)
+        object_list = generate_object_phrase(verb, vp_list)
+        if len(object_list) > 0 and len(subject_list) > 0:
+            relationship = (subject_list, vp_list, object_list)
+            relationships.append(relationship)
+
+print(relationships)
+
+from spacy.symbols import nsubj, VERB, AUX, NOUN, attr, dobj, auxpass, nsubjpass
+
+relationships = []
+root = [token for token in cur_sent if token.head == token][0]
+print(root.pos == AUX)
+possible_phrases = list(root.children)
+subject_list = []
+object_list = []
+for possible_phrase in possible_phrases:
+    if possible_phrase.dep in [nsubj, nsubjpass] and (root.pos == VERB or root.pos == AUX):
+        for i in possible_phrase.subtree:
+            subject_list.append(i)
+    elif (possible_phrase.dep == dobj or possible_phrase.dep == attr) and (root.pos == VERB or root.pos == AUX):
+        for j in possible_phrase.subtree:
+            object_list.append(j)
+            
+            
+if len(object_list) != 0 and len(subject_list) != 0:
+    relationship = (subject_list, [root],  object_list)
+    relationships.append(relationship)
+    
+print(relationships)
 
 
 
+import nltk
+from nltk.tokenize import word_tokenize
+from nltk.tokenize import sent_tokenize
+from nltk.tag import StanfordNERTagger
+
+import spacy
+from spacy import displacy
+from spacy.matcher import Matcher
+
+from collections import Counter
+import en_core_web_sm
+nlp = en_core_web_sm.load()
+
+import re
+
+spacy_nlp = spacy.load("en_core_web_sm")
+matcher = Matcher(spacy_nlp.vocab)
+
+jar = 'stanford-ner/stanford-ner.jar'
+# model = 'stanford-ner/classifiers/english.all.3class.distsim.crf.ser.gz'
+model = 'stanford-ner/classifiers/english.muc.7class.distsim.crf.ser.gz'
+# model = 'stanford-ner/classifiers/wikigold.conll.ser.gz'
+# model = 'stanford-ner/classifiers/sentiment.ser.gz'
+st = StanfordNERTagger(model, jar, encoding='utf-8')
 
 
+question = "When was the first known labor strike occurred ?"
+
+
+r = open(file = 'Development_data/set1/a3.txt', mode = "r")
+text = r.read()
+
+text = text.replace("(", ",")
+text = text.replace(")", ",")
+text_lines = text.splitlines()
+# print(text_lines)
+
+sent_tokens = []
+for line in text_lines:
+    sent_tokens.extend(sent_tokenize(line))
+# print(len(sent_tokens))
+sents_tagged = [nltk.pos_tag(word_tokenize(sent)) for sent in sent_tokens]
+# print(len(sents_tagged))
+
+
+question_tokens = word_tokenize(question)
+question_pattern = [];
+for t in question_tokens:
+    question_pattern.extend([{'LEMMA': t, 'OP': '?'}])
+
+print(question_pattern)
+matcher.add("question_pattern", None, question_pattern)
+
+matched_sentence = ""
+max_match_length = 0;
+
+for sent_token in sent_tokens:
+    this_length = 0
+    doc = spacy_nlp(sent_token)
+    matches = matcher(doc)
+    for match_id, start, end in matches:
+        # string_id = nlp.vocab.strings[match_id]  # Get string representation
+        span = doc[start:end]  # The matched span
+        this_length += len(span.text)        
+        # if (span.text != ""):
+        #     print(start, end, span.text)
+    if (this_length > max_match_length):
+        max_match_length = this_length
+        matched_sentence = sent_token
+
+# print()
+print(matched_sentence)
 
 
 
