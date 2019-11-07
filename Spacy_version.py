@@ -33,8 +33,9 @@ def generate_verb_phrase(vb):
     for i in range(len(result)):
         if verb_idx - result_idx[i] != verb_result_idx - i:
             delete_list.append(i)
-    for i in delete_list:
-        result.pop(i)
+    if len(delete_list) > 0 and result[0] != vb:
+        maxi = max(delete_list)
+        result = result[maxi+1:]
     return result
 
 #given the verb phrase and the verb and the main relations, try to find the corresponding subject part of the relation
@@ -115,7 +116,7 @@ class NLPparagraph():
             if verb.head == verb or verb.dep == amod:
                 continue
             else:
-                subject_list = generate_subject_phrase(verb, vp_list, self.relationships)
+                subject_list = generate_subject_phrase(verb, vp_list, relationships)
                 object_list = generate_object_phrase(verb, vp_list)
                 if len(object_list) > 0 and len(subject_list) > 0:
                     relationship = (subject_list, vp_list, object_list)
@@ -138,6 +139,8 @@ for token in cur_sent:
 
 spacy.displacy.serve(cur_sent, style = "dep")
 
+###
+
 from spacy.symbols import nsubj, VERB, AUX, NOUN, attr, dobj, agent, amod, prep, advmod, auxpass
 
 relationships = []
@@ -158,6 +161,9 @@ for verb in verbs:
 
 print(relationships)
 
+###
+
+####andy's trial code 
 from spacy.symbols import nsubj, VERB, AUX, NOUN, attr, dobj, auxpass, nsubjpass
 
 relationships = []
