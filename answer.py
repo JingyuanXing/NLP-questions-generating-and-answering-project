@@ -6,11 +6,12 @@ Code for answer generation, will be compiled into executables
 
 """
 
+import warnings
+warnings.filterwarnings("ignore")
 
 import spacy
-from spacy.symbols import nsubj, VERB, AUX, NOUN, attr, dobj, agent, amod, prep, advmod, auxpass, PROPN, DET, PRON
+from spacy.symbols import nsubj, VERB, AUX, NOUN, attr, dobj, agent, amod, prep, advmod, auxpass, PROPN, DET, PRON, ADJ, ADV
 from spacy.matcher import Matcher
-from pattern.en import pluralize, singularize
 import sys
 
 from collections import Counter
@@ -380,16 +381,14 @@ class Answering(object):
             object_list = self.generate_object_phrase1(verb, vp_list)
         return object_list
 
-
     def whoWhat_Answers(self, sent, question):
         SUBJECTS = ["nsubj", "nsubjpass", "csubj", "csubjpass", "agent", "expl"]
         OBJECTS = ["dobj", "dative", "attr", "oprd"]
-        print(sent, "\n")
         sent_relevant = [x.strip() for x in sent.split(',')]
         sent_relevant = sent_relevant[0]
         doc = self.nlp(sent_relevant)
         ques = self.nlp(question)
-        
+        # print(sent)
 
         subject_candidate1 = [tok for tok in doc if (tok.dep_ in SUBJECTS)]
         subject_candidate2 = self.sub_phrase_answering(sent)
@@ -412,7 +411,7 @@ class Answering(object):
         subl2 = len(subject_candidate2)
         objl1 = len(object_candidate1)
         objl2 = len(object_candidate2)
-        if (subl1 == 0 and subl2 == 0 and objl1 == 0 and objl2 == 0): 
+        if (subl1 == 0 and subl2 == 0 and objl1 == 0 and objl2 == 0):
             return sent
         else:
             if subl1 == max(subl1, subl2, objl1, objl2):
@@ -424,10 +423,10 @@ class Answering(object):
             else:
                 return " ".join([k.text for k in object_candidate2])
 
-    ###################### returning when, where answers #######################
+
+    ##############################################################################3
 
     def whenWhereQues(self, whereQues, ansSentence):
-        print(whereQues)
         question = self.nlp(whereQues)
         sentence = self.nlp(ansSentence)
         NERlst = []
@@ -442,7 +441,7 @@ class Answering(object):
             elif word.pos_ in ["VERB", "AUX"]:
                 questionVerb = word
             elif word.dep_ in ["nsubj", "nsubjpass"] and questionSubject is None:
-                questionSubject = word.text.lower()
+                questionSubject = word.text
         for tok in sentence.ents:
             if questionWord == "where" and tok.label_ == "GPE":
                 NERlst.append(tok.text)
@@ -457,46 +456,56 @@ class Answering(object):
             if prep is not None and prepPhrase is not None and (
                     word.pos_ == "CCONJ" or word.tag_ == "CC"):  # going into second clause of the sentence, but we have our answer already
                 break
-            elif word.dep_ in ["nsubj", "nsubjpass"] and word.text == questionSubject:
-                subject.append(word.text)
-            elif word.pos_ == "VERB" and word.dep_ == "auxpass" and word.head.lemma_ == questionVerb.lemma_:
+            # elif word.dep_ in ["nsubj", "nsubjpass"] and (word.text.lower() == questionSubject.lower() or (word.pos_ == "PRON" and subject == [])):
+            #    subject.append(word.text)
+            elif questionVerb is not None and word.pos_ == "VERB" and word.dep_ in ["auxpass", "ROOT"] and word.head.lemma_ == questionVerb.lemma_:
                 verb.append(word.text)
             elif word.pos_ == "VERB" and word.lemma_ == questionVerb.lemma_:
                 verb.append(word.text)
-            elif word.pos_ in ["DET", "ADJ"] and word.head.text == questionSubject:
-                subject.append(word.text)
-            elif word.pos_ == "ADP" and word.head.text in verb:
-                prep = word.text
-                prepPhrase.append(prep)
-            elif word.head.text == prep:
-                if word.pos_ in ["NN", "NNS"]:
-                    prepPhrase.append("the")
-                    prepPhrase.append(word.text)
-                else:
-                    prepPhrase.append(word.text)
-
-        if subject is None or verb is None or prep is None:
+            # elif word.pos_ in ["DET", "ADJ"] and word.head.text == questionSubject.lower():
+            # ß    subject.append(word.text)
+            # elif word.pos_ == "ADP" and word.head.text in verb:
+            #    prep = word.text
+            #    prepPhrase.append(prep)
+            # elif word.head.text == prep:
+            #    if word.pos_ in ["NN", "NNS"]:
+            #        prepPhrase.append("the")
+            #        prepPhrase.append(word.text)
+            #    else:
+            #        prepPhrase.append(word.text)
+            elif word.dep_ in ["nummod"] and questionWord == "when":
+                for w in word.subtree:
+                    prepPhrase.append(w.text)
+        if prepPhrase == [] and NERlst == []:
             return sentence.text
 
         question = question[1:]  # get rid of "where" or "when"
         if question[0].pos_ == "VERB":
             question = question[1:]
-        ans = " ".join(subject) + " " + " ".join(verb) + " " + " ".join(prepPhrase) + "."
+        if questionSubject is None: return sentence.text
+        elif verb == [] and prepPhrase == [] and questionVerb is not None and len(NERlst) > 0:
+            ans = questionSubject + " " + questionVerb.text + " " + " ".join(NERlst) + "."
+        elif verb == [] and questionVerb is not None and len(prepPhrase) > 0:
+            ans = questionSubject + " " + questionVerb.text + " " + " ".join(prepPhrase) + "."
+        elif prepPhrase == [] and verb is not None and len(NERlst) > 0:
+            ans = questionSubject + " " + " ".join(verb) + " " + " ".join(NERlst) + "."
+        else:
+            return sentence.text
         return ans
+
 
     ######################## returning binary answers ##########################
 
     def binary_Answers(self, sent, question):
-        print(sent)
         sent = self.nlp(sent)
         question = self.nlp(question)
         missed_list = []
         count = 0
         neg = 1
         question = question[1:]
-        sent_lemmatized = [singularize(tok.lemma_.lower()) for tok in sent]
+        sent_lemmatized = [tok.lemma_.lower() for tok in sent]
         for i in question:
-            if singularize(i.lemma_.lower()) not in sent_lemmatized:
+            if i.lemma_.lower() not in sent_lemmatized:
                 missed_list.append(i)
                 count += 1
 
@@ -605,19 +614,32 @@ class Answering(object):
         ques_nlp = self.nlp(question)
         qroot_verb = [i for i in ques_nlp if i.head == i][0]
         s_verbs = [i for i in sent_nlp if i.pos in [VERB, AUX]]
-        if len(s_verbs) == 0: return sent.text
-        similarity_list = [(tk, qroot_verb.similarity(tk)) for tk in s_verbs]
-        similarity_list = sorted(similarity_list, key=lambda x: x[1], reverse=True)
-        for tk, sim in similarity_list:
-            res = []
-            for c in tk.children:
-                if c.dep == prep:
-                    res += [i for i in c.subtree]
-                    if res[-1].pos_ == "CCONJ": res.pop(-1)
-            if len(res) > 0:
-                res = [i.text for i in res]
-                return " ".join(res)
-        return sent_nlp.text
+        if ques_nlp[1].pos != ADJ and ques_nlp[1].pos != ADV:
+            if len(s_verbs) == 0: return sent.text
+            similarity_list = [(tk, qroot_verb.similarity(tk)) for tk in s_verbs]
+            similarity_list = sorted(similarity_list, key=lambda x: x[1], reverse=True)
+            for tk, sim in similarity_list:
+                res = []
+                for c in tk.children:
+                    if c.dep == prep:
+                        res += [i for i in c.subtree]
+                        if res[-1].pos_ == "CCONJ": res.pop(-1)
+                if len(res) > 0:
+                    res = [i.text for i in res]
+                    return " ".join(res)
+            return sent_nlp.text
+        else:
+            if qroot_verb.pos == AUX:
+                return sent_nlp.text
+            else:
+                similarity_list = [(tk, qroot_verb.similarity(tk)) for tk in s_verbs]
+                similarity_list = sorted(similarity_list, key=lambda x: x[1], reverse=True)
+                for tk, sim in similarity_list:
+                    res = [i.text for i in tk.subtree]
+                    if len(res) > 2:
+                        return " ".join(res)
+                return sent_nlp.text
+
 
 
 
@@ -635,7 +657,7 @@ class Answering(object):
             if ques.split()[0] in ["Did", "Do", "Does", "Is", "Are", "Were", "Was", "Had", "Has", "Have", "Must", "Could", "Can", "Would"]:
                 result.append(self.binary_Answers(input_sent, ques))
             elif ques.split()[0] in ["Who", "What", "Which", "Whom", "Whose"]:
-                result.append(self.whoWhat_Answers(input_sent))
+                result.append(self.whoWhat_Answers(input_sent, ques))
             elif ques.split()[0] in ["When", "Where"]:
                 result.append(self.whenWhereQues(ques, input_sent))
             elif ques.split()[0] in ["Why"]:
@@ -661,7 +683,7 @@ def main():
     a = Answering(Question_list, textr)
     answers = a.getAnswer()
     for i, ans in enumerate(answers):
-        print("Q" + str(i+1) + ". " + ans)
+        print("A" + str(i+1) + ". " + ans)
     return
 
 
